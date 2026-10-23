@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Qty from './Qty.jsx'
 import { INFO } from '../info.js'
 import { euro } from '../format.js'
-import { getSlots, getAsap } from '../hoursCore.js'
+import { getSlots, getAsap, describeSlot } from '../hoursCore.js'
 import { normalizePhone } from '../phone.js'
 import { useDialog } from '../useDialog.js'
 
@@ -17,7 +17,7 @@ const loadContact = () => {
 export default function CartDrawer({ open, onClose, items, count, total, saved, setQty, clear, config }) {
   const closeBtn = useRef(null)
   const panel = useDialog(open, onClose, closeBtn)
-  const [step, setStep] = useState('cart') // cart | checkout | done
+  const [step, setStep] = useState('cart') // cart | checkout | done | send
   const [name, setName] = useState(() => loadContact().name || '')
   const [phone, setPhone] = useState(() => loadContact().phone || '')
   const [note, setNote] = useState('')
@@ -58,7 +58,10 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
 
   const payMethod = method ?? (config.online ? 'online' : 'cash')
   const phoneNorm = normalizePhone(phone)
-  const needsCode = payMethod === 'cash' && config.verify
+  // Is de server nog niet klaar voor cash (geen WhatsApp-melding ingesteld), dan sturen we de klant met een
+  // kant-en-klaar bericht naar WhatsApp. De bestelling is pas geplaatst als de klant dat bericht verstuurt.
+  const viaLink = payMethod === 'cash' && !config.cash
+  const needsCode = payMethod === 'cash' && config.cash && config.verify
   const close = () => { onClose(); if (step !== 'checkout') setStep('cart'); if (step === 'done') setResult(null) }
 
   // Beschikbare tijden opnieuw berekenen. Is de gekozen tijd intussen verstreken, dan kiezen we de
@@ -141,10 +144,34 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
     setBusy(false)
   }
 
+  const waLink = () => {
+    const when = slot === 'asap' ? `zo snel mogelijk (rond ${asap?.label})` : describeSlot(slot)
+    const text = [
+      'Nieuwe bestelling via de website (afhalen)',
+      '',
+      `Naam: ${name.trim()}`,
+      `Telefoon: ${phoneNorm}`,
+      `Afhalen: ${when}`,
+      '',
+      ...items.map((i) => `${i.qty}x ${i.name}${i.choice ? ` (${i.choice.label})` : ''} (${euro(i.price * i.qty)})`),
+      '',
+      `Totaal: ${euro(total)}`,
+      'Betaling: cash bij afhalen',
+      note.trim() ? `Opmerking: ${note.trim()}` : null,
+    ].filter((l) => l !== null).join('\n')
+    return `https://wa.me/${INFO.whatsapp}?text=${encodeURIComponent(text)}`
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     setTried(true)
     if (!valid || busy) return
+    if (viaLink) {
+      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ name: name.trim(), phone: phone.trim() })) } catch { /* privémodus */ }
+      setResult({ href: waLink(), slotLabel: slot === 'asap' ? `zo snel mogelijk (rond ${asap?.label})` : describeSlot(slot), totalCents: Math.round(total * 100) })
+      setStep('send')
+      return
+    }
     if (needsCode) {
       const token = readToken()
       if (!token) return startVerify()
@@ -168,7 +195,7 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
     }
   }
 
-  const title = step === 'checkout' ? 'Afrekenen' : step === 'done' ? 'Bedankt!' : 'Jouw mandje'
+  const title = step === 'checkout' ? 'Afrekenen' : step === 'done' ? 'Bedankt!' : step === 'send' ? 'Bijna klaar' : 'Jouw mandje'
 
   return (
     <div className="drawer">
@@ -179,6 +206,23 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
           <h2 id="cart-title" className="drawer__title">{title}</h2>
           <button ref={closeBtn} className="drawer__close" onClick={close} aria-label="Sluiten">×</button>
         </div>
+
+        {step === 'send' && result && (
+          <div className="done">
+            <h3>Verstuur je bestelling</h3>
+            <p>Je bestelling is <strong>pas geplaatst</strong> als je het bericht in WhatsApp verstuurt. Klik op de knop: het bericht staat al klaar, je hoeft alleen op verzenden te drukken.</p>
+            <dl className="done__facts">
+              <div><dt>Afhalen</dt><dd>{result.slotLabel}</dd></div>
+              <div><dt>Totaal</dt><dd>{euro(result.totalCents / 100)}</dd></div>
+              <div><dt>Betalen</dt><dd>Cash bij het afhalen</dd></div>
+              <div><dt>Adres</dt><dd>{INFO.street}, {INFO.city}</dd></div>
+            </dl>
+            <a className="cartbar__btn sendlink" href={result.href} target="_blank" rel="noopener noreferrer" onClick={clear}>
+              <span>Open WhatsApp en verstuur</span>
+            </a>
+            <button type="button" className="linkbtn" onClick={() => setStep('checkout')}>← Nog iets aanpassen</button>
+          </div>
+        )}
 
         {step === 'done' && result && (
           <div className="done">
@@ -233,16 +277,10 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
             <div className="drawer__foot">
               {saved > 0 && <div className="saved">Je bespaart {euro(saved)}</div>}
               <div className="sum"><span>Totaal</span><strong>{euro(total)}</strong></div>
-              {config.loaded && !config.cash && !config.online ? (
-                <div className="notice">
-                  Online bestellen start binnenkort. Bel ons om te bestellen: <a href={INFO.phoneHref}>{INFO.phone}</a>
-                </div>
-              ) : (
-                <button className="cartbar__btn" onClick={goCheckout} disabled={!config.loaded}>
-                  <span>Verder naar afrekenen</span>
-                  <span>{euro(total)}</span>
-                </button>
-              )}
+              <button className="cartbar__btn" onClick={goCheckout} disabled={!config.loaded}>
+                <span>Verder naar afrekenen</span>
+                <span>{euro(total)}</span>
+              </button>
             </div>
           </>
         ))}
@@ -315,10 +353,10 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
                   <span className="opts__dot" aria-hidden="true" />
                   <span className="pay__text">Online betalen<small>{config.online ? 'Bancontact, kaart of Apple Pay' : 'Binnenkort beschikbaar'}</small></span>
                 </label>
-                <label className={`${payMethod === 'cash' ? 'is-on' : ''} ${config.cash ? '' : 'is-disabled'}`}>
-                  <input type="radio" name="pay" checked={payMethod === 'cash'} disabled={!config.cash} onChange={() => setMethod('cash')} />
+                <label className={payMethod === 'cash' ? 'is-on' : ''}>
+                  <input type="radio" name="pay" checked={payMethod === 'cash'} onChange={() => setMethod('cash')} />
                   <span className="opts__dot" aria-hidden="true" />
-                  <span className="pay__text">Cash bij afhalen<small>{config.cash ? 'Je betaalt als je je bestelling ophaalt' : 'Binnenkort beschikbaar'}</small></span>
+                  <span className="pay__text">Cash bij afhalen<small>Je betaalt als je je bestelling ophaalt</small></span>
                 </label>
               </fieldset>
 
@@ -335,12 +373,14 @@ export default function CartDrawer({ open, onClose, items, count, total, saved, 
               {error && <div className="notice notice--err" role="alert">{error}</div>}
               <div className="sum"><span>Totaal</span><strong>{euro(total)}</strong></div>
               <button className="cartbar__btn" type="submit" disabled={busy}>
-                <span>{busy ? 'Even geduld…' : payMethod === 'online' ? 'Betalen' : 'Bestelling plaatsen'}</span>
+                <span>{busy ? 'Even geduld…' : payMethod === 'online' ? 'Betalen' : viaLink ? 'Bestel via WhatsApp' : 'Bestelling plaatsen'}</span>
                 <span>{euro(total)}</span>
               </button>
               <p className="drawer__hint">
                 {payMethod === 'online'
                   ? 'Je gaat naar een beveiligde betaalpagina van Mollie.'
+                  : viaLink
+                    ? 'Je bestelling opent als bericht in WhatsApp. Je betaalt cash bij het afhalen.'
                   : needsCode && !readToken()
                     ? 'We sturen je eerst een code via WhatsApp om je nummer te bevestigen. Je betaalt cash bij het afhalen.'
                     : 'Je betaalt cash wanneer je de bestelling ophaalt.'}
