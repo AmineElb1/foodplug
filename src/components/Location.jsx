@@ -5,7 +5,7 @@ export default function Location() {
   const status = useOpenStatus()
   return (
     <section id="locatie" className="wrap section location">
-      <h2 className="h2">Bezorgen &amp; afhalen</h2>
+      <h2 className="h2">Afhalen &amp; bezorgen</h2>
       <div className="location__grid">
         <div>
           <dl className="facts">
@@ -20,8 +20,15 @@ export default function Location() {
               </dd>
             </div>
             <div><dt>Instagram</dt><dd><a href={INFO.instagram} target="_blank" rel="noopener noreferrer">{INFO.instagramHandle}</a></dd></div>
-            <div><dt>Bezorgzone</dt><dd>[GEBIED]</dd></div>
-            <div><dt>Minimum bestelbedrag</dt><dd>€ [BEDRAG]</dd></div>
+            <div><dt>Afhalen</dt><dd>Bestel op deze site en haal je bestelling op. Online betalen of cash bij afhalen.</dd></div>
+            <div>
+              <dt>Bezorgen</dt>
+              <dd>
+                Alleen via{' '}
+                <a href={INFO.ubereats} target="_blank" rel="noopener noreferrer">Uber Eats</a> en{' '}
+                {INFO.deliveroo ? <a href={INFO.deliveroo} target="_blank" rel="noopener noreferrer">Deliveroo</a> : 'Deliveroo'}
+              </dd>
+            </div>
           </dl>
           <div className="location__cta">
             <a className="btn btn--red" href={INFO.mapsUrl} target="_blank" rel="noopener noreferrer"><span>Route plannen</span></a>

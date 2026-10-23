@@ -6,22 +6,34 @@ import ProductSheet from './components/ProductSheet.jsx'
 import CartDrawer from './components/CartDrawer.jsx'
 import Reviews from './components/Reviews.jsx'
 import Location from './components/Location.jsx'
+import OrderReturn from './components/OrderReturn.jsx'
 import { useCart } from './useCart.js'
+import { useConfig } from './useConfig.js'
 import { euro } from './format.js'
 import { INFO } from './info.js'
 
 // three.js is zwaar: laad de 3D-scène los van de rest van de pagina.
-const BurgerScene = lazy(() => import('./components/BurgerScene.jsx'))
+const ModelCarousel = lazy(() => import('./components/ModelCarousel.jsx'))
 
 export default function App() {
   const { add, setQty, clear, lines, count, total, saved, perProduct } = useCart()
+  const config = useConfig()
   const [sheet, setSheet] = useState(null)
+  // Mollie stuurt de klant terug naar /?order=FP-XXXX
+  const [orderRef, setOrderRef] = useState(() => {
+    const r = new URLSearchParams(window.location.search).get('order')
+    return /^FP-[A-Z0-9]{4}$/.test(r || '') ? r : null
+  })
   const [toast, setToast] = useState('')
   const toastTimer = useRef(0)
   const [cartOpen, setCartOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const closeCart = useCallback(() => setCartOpen(false), [])
   const closeSheet = useCallback(() => setSheet(null), [])
+  const closeReturn = useCallback(() => {
+    window.history.replaceState({}, '', window.location.pathname)
+    setOrderRef(null)
+  }, [])
 
   const notify = useCallback((msg) => {
     setToast(msg)
@@ -63,11 +75,11 @@ export default function App() {
 
       <section className="hero">
         <div className="wrap hero__inner">
-          <h1 className="hero__title">Eet.<br />Drink.<br />Plug in.</h1>
+          <h1 className="hero__title">Eat.<br />Good.<br />Plug in.</h1>
           <div className="hero__stage">
             <div className="hero__plate" />
             <div className="hero__canvas">
-              <Suspense fallback={null}><BurgerScene /></Suspense>
+              <Suspense fallback={null}><ModelCarousel /></Suspense>
             </div>
             <Halal size={84} className="halal--hero" />
           </div>
@@ -87,8 +99,8 @@ export default function App() {
           <h2 className="h2 h2--dark">Zo plug je in</h2>
           <ol>
             <li><b>1</b><span><strong>Kies</strong> je eten, drinken en dessert</span></li>
-            <li><b>2</b><span><strong>Bezorgen</strong> of <strong>afhalen</strong>: jij beslist</span></li>
-            <li><b>3</b><span><strong>Bestel</strong> en geniet. Klaar in [MINUTEN] min</span></li>
+            <li><b>2</b><span>Kies je <strong>afhaalmoment</strong> en betaal <strong>online</strong> of <strong>cash</strong></span></li>
+            <li><b>3</b><span><strong>Haal af</strong> en geniet. Je bestelling staat klaar</span></li>
           </ol>
         </div>
       </section>
@@ -125,7 +137,9 @@ export default function App() {
 
       <div className={`toast ${toast ? 'is-on' : ''} ${count > 0 ? 'has-cart' : ''}`} role="status" aria-live="polite">{toast}</div>
 
-      <CartDrawer open={cartOpen} onClose={closeCart} items={lines} count={count} total={total} saved={saved} setQty={setQty} clear={clear} />
+      <CartDrawer open={cartOpen} onClose={closeCart} items={lines} count={count} total={total} saved={saved} setQty={setQty} clear={clear} config={config} />
+
+      {orderRef && <OrderReturn refCode={orderRef} onClose={closeReturn} onPaid={clear} />}
     </div>
   )
 }
